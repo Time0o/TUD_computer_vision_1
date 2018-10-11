@@ -2,6 +2,7 @@
 
 import argparse
 import sys
+from typing import Callable
 
 import cv2 as cv
 import numpy as np
@@ -35,14 +36,14 @@ class PolynomialSelectionWidget(QtWidgets.QGraphicsView):
     INITIAL_MAXIMUM_SELECTOR_POS = QtCore.QPoint(3 * (SIZE.width() // 4) - 1,
                                                  SIZE.height() // 4 - 1)
 
-    minimumChanged = QtCore.pyqtSignal(QtCore.QPoint)
-    maximumChanged = QtCore.pyqtSignal(QtCore.QPoint)
+    polynomialChanged = QtCore.pyqtSignal()
 
     class ExtremumSelector(QtWidgets.QPushButton):
         RADIUS = 10
         STYLESHEET = 'QPushButton {{border: 2px; background: {}}}'
 
         extremumChanged = QtCore.pyqtSignal()
+        extremumFixed = QtCore.pyqtSignal()
 
         def __init__(self, color: QtGui.QColor, parent=None):
             super().__init__(parent)
@@ -113,12 +114,14 @@ class PolynomialSelectionWidget(QtWidgets.QGraphicsView):
 
             self._lastMouseEventPos = mouseEventPos
 
-            self.extremumChanged.emit() # TODO
+            self.extremumChanged.emit()
 
             super().mouseMoveEvent(event)
 
         def mouseReleaseEvent(self, event: QtGui.QMouseEvent):
             self._lastMouseEventPos = None
+
+            self.extremumFixed.emit()
 
             super().mouseReleaseEvent(event)
 
@@ -172,6 +175,11 @@ class PolynomialSelectionWidget(QtWidgets.QGraphicsView):
         self._minimumSelector.extremumChanged.connect(self._updatePolynomial)
         self._maximumSelector.extremumChanged.connect(self._updatePolynomial)
 
+        self._minimumSelector.extremumFixed.connect(
+            lambda: self.polynomialChanged.emit())
+        self._maximumSelector.extremumFixed.connect(
+            lambda: self.polynomialChanged.emit())
+
         self._minimumSelector.move(
             self.INITIAL_MINIMUM_SELECTOR_POS.x(),
             self.INITIAL_MINIMUM_SELECTOR_POS.y() - self.ExtremumSelector.RADIUS)
@@ -180,9 +188,13 @@ class PolynomialSelectionWidget(QtWidgets.QGraphicsView):
             self.INITIAL_MAXIMUM_SELECTOR_POS.x(),
             self.INITIAL_MAXIMUM_SELECTOR_POS.y() - self.ExtremumSelector.RADIUS)
 
+        self._polynomial = None
         self._updatePolynomial()
 
         self.setScene(self._scene)
+
+    def polynomial(self) -> Callable[[int], float]:
+        return self._polynomial
 
     @QtCore.pyqtSlot()
     def _updatePolynomial(self):
@@ -210,7 +222,7 @@ class PolynomialSelectionWidget(QtWidgets.QGraphicsView):
         b = -3. * dy / (2. * dx)
         c = (minY + maxY) / 2. + b * x0
 
-        p = lambda x: a * (x - x0)**3 - b * x + c
+        self._polynomial = lambda x: a * (x - x0)**3 - b * x + c
 
         scaleX, scaleY = self.SIZE.width() // 256, self.SIZE.height() // 256
 
@@ -219,7 +231,7 @@ class PolynomialSelectionWidget(QtWidgets.QGraphicsView):
 
         for x in range(0, 256):
             xScaled = x * scaleX
-            yScaled = p(x) * scaleY
+            yScaled = self._polynomial(x) * scaleY
 
             if not firstReached:
                 if yScaled < self.SIZE.height():
@@ -255,6 +267,7 @@ class SolarizationMainWindow(QtWidgets.QMainWindow):
         # initialize image pixmap
         self._graphicsPixmapItem = QtWidgets.QGraphicsPixmapItem()
 
+        self._mat = mat
         self._updateMat(mat)
 
         # construct scene
@@ -268,6 +281,9 @@ class SolarizationMainWindow(QtWidgets.QMainWindow):
 
         # construct polynomial selection widget
         self._polynomialSelectionWidget = PolynomialSelectionWidget()
+
+        self._polynomialSelectionWidget.polynomialChanged.connect(
+            self._updateSolarization)
 
         # construct central widget
         layout = QtWidgets.QHBoxLayout()
@@ -289,11 +305,15 @@ class SolarizationMainWindow(QtWidgets.QMainWindow):
         self._graphicsView.fitInView(self._graphicsScene.sceneRect(),
                                      QtCore.Qt.KeepAspectRatio)
 
-    @QtCore.pyqtSlot(np.ndarray)
-    def _updateMat(self, mat: np.ndarray):
-        self._mat = mat
+    @QtCore.pyqtSlot()
+    def _updateSolarization(self):
+        p = self._polynomialSelectionWidget.polynomial()
+        p_vectorized = np.vectorize(p, otypes=[np.uint8])
 
-        pixmap = mat_to_pixmap(self._mat)
+        self._updateMat(p_vectorized(self._mat))
+
+    def _updateMat(self, mat: np.ndarray):
+        pixmap = mat_to_pixmap(mat)
         self._graphicsPixmapItem.setPixmap(pixmap)
 
 
