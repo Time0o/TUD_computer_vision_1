@@ -56,6 +56,7 @@ class PolynomialSelectionWidget(QtWidgets.QGraphicsView):
             self.setMask(QtGui.QRegion(rect, QtGui.QRegion.Ellipse))
 
             self._lastMouseEventPos = None
+            self._mouseOutsideScene = False
 
         def paintEvent(self, event: QtGui.QPaintEvent):
             painter = QtGui.QPainter(self)
@@ -75,21 +76,40 @@ class PolynomialSelectionWidget(QtWidgets.QGraphicsView):
 
         def mousePressEvent(self, event: QtGui.QMouseEvent):
             self._lastMouseEventPos = event.globalPos()
+            self._mouseOutsideScene = False
 
             super().mousePressEvent(event)
 
-        def mouseMoveEvent(self, event: QtWidgets.QGraphicsSceneMouseEvent):
+        def mouseMoveEvent(self, event: QtGui.QMouseEvent):
+            scene = self.parent()
+            sceneRect = scene.sceneRect()
+
+            if self._mouseOutsideScene:
+                if sceneRect.contains(scene.mapFromGlobal(event.globalPos())):
+                    self._mouseOutsideScene = False
+                else:
+                    return
+
             mouseEventPos = event.globalPos()
             delta = mouseEventPos - self._lastMouseEventPos
 
             currentPos = self.mapToGlobal(self.pos())
             newPos = self.mapFromGlobal(currentPos + delta)
 
-            if self.parent().sceneRect().contains(newPos):
+            if sceneRect.contains(newPos.x() + self.RADIUS,
+                                  newPos.y() + self.RADIUS):
                 self.move(newPos)
             else:
-                self.releaseMouse()
-                return
+                minPosX = minPosY = -self.RADIUS
+                maxPosX = sceneRect.width() - self.RADIUS - 1
+                maxPosY = sceneRect.height() - self.RADIUS - 1
+
+                newPosX = max(min(newPos.x(), maxPosX), minPosX)
+                newPosY = max(min(newPos.y(), maxPosY), minPosY)
+
+                self.move(newPosX, newPosY)
+
+                self._mouseOutsideScene = True
 
             self._lastMouseEventPos = mouseEventPos
 
