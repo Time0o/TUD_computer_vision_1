@@ -29,11 +29,11 @@ class PolynomialSelectionWidget(QtWidgets.QGraphicsView):
 
     POLYNOMIAL_LINEWIDTH = 3
 
-    INITIAL_MINIMUM_SELECTOR_POS = QtCore.QPoint(SIZE.width() // 4,
-                                                 SIZE.height() // 2)
+    INITIAL_MINIMUM_SELECTOR_POS = QtCore.QPoint(SIZE.width() // 4 - 1,
+                                                 3 * (SIZE.height() // 4) - 1)
 
-    INITIAL_MAXIMUM_SELECTOR_POS = QtCore.QPoint(3 * (SIZE.width() // 4),
-                                                 SIZE.height() // 2)
+    INITIAL_MAXIMUM_SELECTOR_POS = QtCore.QPoint(3 * (SIZE.width() // 4) - 1,
+                                                 SIZE.height() // 4 - 1)
 
     minimumChanged = QtCore.pyqtSignal(QtCore.QPoint)
     maximumChanged = QtCore.pyqtSignal(QtCore.QPoint)
@@ -179,6 +179,8 @@ class PolynomialSelectionWidget(QtWidgets.QGraphicsView):
         self._maximumSelector.move(
             self.INITIAL_MAXIMUM_SELECTOR_POS.x(),
             self.INITIAL_MAXIMUM_SELECTOR_POS.y() - self.ExtremumSelector.RADIUS)
+
+        self._updatePolynomial()
 
         self.setScene(self._scene)
 
