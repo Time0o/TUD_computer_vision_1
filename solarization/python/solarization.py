@@ -5,6 +5,7 @@ import sys
 
 import cv2 as cv
 import numpy as np
+import qdarkstyle
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 
@@ -24,10 +25,9 @@ def mat_to_pixmap(mat: np.ndarray) -> QtGui.QPixmap:
 class PolynomialSelectionWidget(QtWidgets.QGraphicsView):
     SIZE = QtCore.QSize(512, 512)
 
-    MINIMUM_SELECTOR_COLOR = QtGui.QColor(0, 0, 255)
-    MAXIMUM_SELECTOR_COLOR = QtGui.QColor(255, 0, 0)
+    AXES_LINEWIDTH = 1
+
     POLYNOMIAL_LINEWIDTH = 3
-    POLYNOMIAL_COLOR = QtGui.QColor(0, 255, 0)
 
     INITIAL_MINIMUM_SELECTOR_POS = QtCore.QPoint(SIZE.width() // 4,
                                                  SIZE.height() // 2)
@@ -123,28 +123,31 @@ class PolynomialSelectionWidget(QtWidgets.QGraphicsView):
         self._scene.setSceneRect(QtCore.QRectF(QtCore.QPointF(0., 0.),
                                                QtCore.QSizeF(self.SIZE)))
 
+        # "coordinate axes"
+        pen = QtGui.QPen(self.palette().midlight().color())
+        pen.setWidth(self.AXES_LINEWIDTH)
+
+        self._scene.addLine(0, self.SIZE.height() // 2,
+                            self.SIZE.width(), self.SIZE.height() // 2, pen)
+
+        self._scene.addLine(self.SIZE.width() // 2, 0,
+                            self.SIZE.width() // 2, self.SIZE.height(), pen)
+
         # polynomial graphics item
         self._polynomialGraphicsPathItem = QtWidgets.QGraphicsPathItem()
 
-        pen = QtGui.QPen(self.POLYNOMIAL_COLOR)
+        pen = QtGui.QPen(self.palette().highlight().color())
         pen.setWidth(self.POLYNOMIAL_LINEWIDTH)
         self._polynomialGraphicsPathItem.setPen(pen)
 
         self._scene.addItem(self._polynomialGraphicsPathItem)
 
-        # "coordinate axes"
-        self._scene.addLine(0, self.SIZE.height() // 2,
-                            self.SIZE.width(), self.SIZE.height() // 2)
-
-        self._scene.addLine(self.SIZE.width() // 2, 0,
-                            self.SIZE.width() // 2, self.SIZE.height())
-
         # minimum and maximum selection buttons
         self._minimumSelector = self.ExtremumSelector(
-            self.MINIMUM_SELECTOR_COLOR, parent=self)
+            self.palette().highlight().color(), parent=self)
 
         self._maximumSelector = self.ExtremumSelector(
-            self.MAXIMUM_SELECTOR_COLOR, parent=self)
+            self.palette().highlight().color(), parent=self)
 
         self._minimumSelector.extremumChanged.connect(self._updatePolynomial)
         self._maximumSelector.extremumChanged.connect(self._updatePolynomial)
@@ -198,8 +201,13 @@ class PolynomialSelectionWidget(QtWidgets.QGraphicsView):
 
             if not firstReached:
                 if yScaled < self.SIZE.height():
-                    firstPoint = QtCore.QPointF(xScaled, self.SIZE.height())
+                    if xScaled == 0:
+                        firstPoint = QtCore.QPointF(xScaled, yScaled)
+                    else:
+                        firstPoint = QtCore.QPointF(xScaled, self.SIZE.height())
+
                     path = QtGui.QPainterPath(firstPoint)
+
                     firstReached = True
                 else:
                     continue
@@ -207,6 +215,7 @@ class PolynomialSelectionWidget(QtWidgets.QGraphicsView):
             if yScaled >= self.SIZE.height():
                 if not lastReached:
                     path.lineTo(QtCore.QPointF(xScaled, self.SIZE.height()))
+
                     lastReached = True
             else:
                 path.lineTo(QtCore.QPointF(xScaled, yScaled))
@@ -306,6 +315,8 @@ if __name__ == '__main__':
     # start interactive mode
     if args.interactive:
         app = QtWidgets.QApplication(sys.argv)
+
+        app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
 
         def excepthook(etype, eval, etraceback):
             print("{}: {}".format(etype.__name__, eval), file=sys.stderr)
