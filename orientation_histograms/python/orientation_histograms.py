@@ -6,6 +6,9 @@ import traceback
 import cv2 as cv
 import numpy as np
 import qdarkstyle
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
+from matplotlib.spines import Spine
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 
@@ -54,95 +57,155 @@ def matToPixmap(mat: np.ndarray) -> QtGui.QPixmap:
     return pixmap
 
 
-class ImageDisplayWidget(QtWidgets.QWidget):
-    def __init__(self, parent = None):
+class TitledViewWidget(QtWidgets.QWidget):
+    def __init__(self, title: str, mat: np.ndarray, parent=None):
         super().__init__(parent)
 
-        # main image
-        self._mainGraphicsPixmapItem = QtWidgets.QGraphicsPixmapItem()
+        # display title
+        label = QtWidgets.QLabel(title)
 
-        self._mainScene = QtWidgets.QGraphicsScene()
-        self._mainScene.addItem(self._mainGraphicsPixmapItem)
+        # display image
+        pixmap = matToPixmap(matToGrayscale(mat))
+        self._graphicsPixmapItem = QtWidgets.QGraphicsPixmapItem(pixmap)
 
-        self._mainView = QtWidgets.QGraphicsView()
-        self._mainView.setScene(self._mainScene)
+        self._scene = QtWidgets.QGraphicsScene()
+        self._scene.addItem(self._graphicsPixmapItem)
 
-        # histogram magnitude
-        self._gradientMagnitudeGraphicsPixmapItem = QtWidgets.QGraphicsPixmapItem()
+        self._view = QtWidgets.QGraphicsView()
+        self._view.setScene(self._scene)
 
-        self._gradientMagnitudeScene = QtWidgets.QGraphicsScene()
-        self._gradientMagnitudeScene.addItem(
-            self._gradientMagnitudeGraphicsPixmapItem)
+        # lay out widgets
+        layout = QtWidgets.QVBoxLayout()
+        layout.addWidget(label)
+        layout.addWidget(self._view)
 
-        self._gradientMagnitudeView = QtWidgets.QGraphicsView()
-        self._gradientMagnitudeView.setScene(self._gradientMagnitudeScene)
-
-        # histogram phase
-        self._gradientPhaseGraphicsPixmapItem = QtWidgets.QGraphicsPixmapItem()
-
-        self._gradientPhaseScene = QtWidgets.QGraphicsScene()
-        self._gradientPhaseScene.addItem(self._gradientPhaseGraphicsPixmapItem)
-
-        self._gradientPhaseView = QtWidgets.QGraphicsView()
-        self._gradientPhaseView.setScene(self._gradientPhaseScene)
-
-        # combined gradient view widget
-        gradientWidget = QtWidgets.QWidget()
-        gradientWidgetLayout = QtWidgets.QVBoxLayout()
-        gradientWidgetLayout.addWidget(QtWidgets.QLabel('Gradient Magnitude'))
-        gradientWidgetLayout.addWidget(self._gradientMagnitudeView)
-        gradientWidgetLayout.addWidget(QtWidgets.QLabel('Gradient Phase'))
-        gradientWidgetLayout.addWidget(self._gradientPhaseView)
-        gradientWidget.setLayout(gradientWidgetLayout)
-
-        # layout
-        layout = QtWidgets.QHBoxLayout()
-        layout.addWidget(self._mainView, 2)
-        layout.addWidget(gradientWidget, 1)
         self.setLayout(layout)
 
     def updateImage(self, mat: np.ndarray):
         pixmap = matToPixmap(matToGrayscale(mat))
-        self._mainGraphicsPixmapItem.setPixmap(pixmap)
+        self._graphicsPixmapItem.setPixmap(pixmap)
 
-    def updateGradientMagnitudeImage(self, mat: np.ndarray):
-        pixmap = matToPixmap(matToGrayscale(mat))
-        self._gradientMagnitudeGraphicsPixmapItem.setPixmap(pixmap)
+    def fitImage(self):
+        self._view.fitInView(self._scene.itemsBoundingRect(),
+                             QtCore.Qt.KeepAspectRatio)
 
-    def updateGradientPhaseImage(self, mat: np.ndarray):
-        pixmap = matToPixmap(matToGrayscale(mat))
-        self._gradientPhaseGraphicsPixmapItem.setPixmap(pixmap)
 
-    def fitImages(self):
-        self._mainView.fitInView(
-            self._mainScene.itemsBoundingRect(),
-            QtCore.Qt.KeepAspectRatio)
+class GradientHistogramWidget(FigureCanvasQTAgg):
+    DEFAULT_BINS = 20
 
-        self._gradientPhaseView.fitInView(
-            self._gradientPhaseScene.itemsBoundingRect(),
-            QtCore.Qt.KeepAspectRatio)
+    BACKGROUND_COLOR = '#31363b'
+    FOREGROUND_COLOR = '#31363b'
+    AXES_COLOR = '#76797c'
+    PLOT_COLOR = '#308cc6'
+    TEXT_COLOR = '#eff0f1'
 
-        self._gradientMagnitudeView.fitInView(
-            self._gradientMagnitudeScene.itemsBoundingRect(),
-            QtCore.Qt.KeepAspectRatio)
+    def __init__(self,
+                 gradientMagnitude: np.ndarray,
+                 gradientPhase: np.ndarray,
+                 bins: int = None):
+
+        # create figure
+        self._fig = Figure()
+        self._fig.subplots_adjust(left=.2, bottom=.2)
+
+        # create and label axes
+        self._axes = self._fig.add_subplot(111)
+        self._axes.set_title('Gradient Phase Histogram', color=self.TEXT_COLOR)
+        self._axes.set_xlabel("$\phi$", color=self.TEXT_COLOR)
+        self._axes.set_ylabel("$H(\phi)$ (normalized)", color=self.TEXT_COLOR)
+
+        super().__init__(self._fig)
+
+        # color axes and figure
+        self._axes.set_facecolor(self.FOREGROUND_COLOR)
+
+        for spine in self._axes.spines.values():
+            spine.set_color(self.AXES_COLOR)
+
+        self._axes.tick_params(axis='x', colors=self.TEXT_COLOR)
+        self._axes.tick_params(axis='y', colors=self.TEXT_COLOR)
+
+        self._fig.set_facecolor(self.BACKGROUND_COLOR)
+
+        # generate histogram
+        self._gradientMagnitude = gradientMagnitude
+        self._gradientPhase = gradientPhase
+        self._bins = bins if bins is not None else self.DEFAULT_BINS
+
+        self._updateHistogram()
+
+    def setBins(self, bins: int):
+        self._bins = bins
+
+        self._updateHistogram()
+
+    def setGradient(self,
+                    gradientMagnitude: np.ndarray,
+                    gradientPhase: np.ndarray):
+
+        self._gradientMagnitude = gradientMagnitude
+        self._gradientPhase = gradientPhase
+
+        self._updateHistogram()
+
+    def _updateHistogram(self):
+        pass # TODO
 
 
 class OrientationHistogramsMainWindow(QtWidgets.QMainWindow):
+    IMAGE_DISPLAY_WIDGET_STRETCH = 1.5
+    GRADIENT_WIDGET_STRETCH = 1.
+
     def __init__(self, mat: np.ndarray):
         super().__init__()
 
-        # display image and gradient magnitude/phase
-        self._imageDisplayWidget = ImageDisplayWidget()
-        self.setCentralWidget(self._imageDisplayWidget)
-
-        self._imageDisplayWidget.updateImage(mat)
-
+        # calculate image gradient magnitude/phase
         magnitude, phase = matGradient(mat)
-        self._imageDisplayWidget.updateGradientMagnitudeImage(magnitude)
-        self._imageDisplayWidget.updateGradientPhaseImage(phase)
+
+        # display image and gradient magnitude/phase
+        self._imageDisplayWidget = TitledViewWidget(
+            "Input Image", mat)
+
+        self._gradientMagnitudeDisplayWidget = TitledViewWidget(
+            "Gradient Magnitude", magnitude)
+
+        self._gradientPhaseDisplayWidget = TitledViewWidget(
+            "Gradient Phase", phase)
+
+        # display gradient histogram
+        self._gradientHistogramWidget = GradientHistogramWidget(
+            magnitude, phase)
+
+        # lay out widgets
+        gradientImagesWidget = QtWidgets.QWidget()
+        gradientImagesWidgetLayout = QtWidgets.QHBoxLayout()
+        gradientImagesWidgetLayout.addWidget(self._gradientMagnitudeDisplayWidget)
+        gradientImagesWidgetLayout.addWidget(self._gradientPhaseDisplayWidget)
+        gradientImagesWidget.setLayout(gradientImagesWidgetLayout)
+
+        gradientWidget = QtWidgets.QWidget()
+        gradientWidgetLayout = QtWidgets.QVBoxLayout()
+        gradientWidgetLayout.addWidget(gradientImagesWidget)
+        gradientWidgetLayout.addWidget(self._gradientHistogramWidget)
+        gradientWidget.setLayout(gradientWidgetLayout)
+
+        centralWidget = QtWidgets.QWidget()
+        centralWidgetLayout = QtWidgets.QHBoxLayout()
+
+        centralWidgetLayout.addWidget(self._imageDisplayWidget,
+                                      self.IMAGE_DISPLAY_WIDGET_STRETCH)
+
+        centralWidgetLayout.addWidget(gradientWidget,
+                                      self.GRADIENT_WIDGET_STRETCH)
+
+        centralWidget.setLayout(centralWidgetLayout)
+
+        self.setCentralWidget(centralWidget)
 
     def initializeDisplay(self):
-        self._imageDisplayWidget.fitImages()
+        self._imageDisplayWidget.fitImage()
+        self._gradientMagnitudeDisplayWidget.fitImage()
+        self._gradientPhaseDisplayWidget.fitImage()
 
 
 if __name__ == '__main__':
