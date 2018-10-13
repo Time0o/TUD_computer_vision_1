@@ -93,6 +93,14 @@ class TitledViewWidget(QtWidgets.QWidget):
 class GradientHistogramWidget(FigureCanvasQTAgg):
     DEFAULT_BINS = 20
 
+    XTICKS = [
+        (0, '0'),
+        (np.pi / 4, r'$\frac{\pi}{4}$'),
+        (np.pi / 2, r'$\frac{\pi}{2}$'),
+        (3 * np.pi / 4, r'$\frac{3 \pi}{4}$'),
+        (np.pi, '$\pi$')
+    ]
+
     BACKGROUND_COLOR = '#31363b'
     FOREGROUND_COLOR = '#31363b'
     AXES_COLOR = '#76797c'
@@ -113,6 +121,13 @@ class GradientHistogramWidget(FigureCanvasQTAgg):
         self._axes.set_title('Gradient Phase Histogram', color=self.TEXT_COLOR)
         self._axes.set_xlabel("$\phi$", color=self.TEXT_COLOR)
         self._axes.set_ylabel("$H(\phi)$ (normalized)", color=self.TEXT_COLOR)
+
+        # adjust axes dimension and ticks
+        self._axes.set_xlim([0, np.pi])
+
+        xticks, xticklabels = zip(*self.XTICKS)
+        self._axes.set_xticks(xticks)
+        self._axes.set_xticklabels(xticklabels)
 
         super().__init__(self._fig)
 
@@ -149,7 +164,16 @@ class GradientHistogramWidget(FigureCanvasQTAgg):
         self._updateHistogram()
 
     def _updateHistogram(self):
-        pass # TODO
+        angles = np.linspace(0, np.pi, self._bins)
+        sums = np.empty_like(angles)
+
+        for i, angle in enumerate(angles):
+            angleDeltas = np.cos(self._gradientPhase - angle)
+            sums[i] = np.sum(np.abs(angleDeltas * self._gradientMagnitude))
+
+        sums /= sums.sum()
+
+        self._axes.bar(angles, sums, align='edge')
 
 
 class OrientationHistogramsMainWindow(QtWidgets.QMainWindow):
