@@ -8,7 +8,6 @@ import numpy as np
 import qdarkstyle
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
-from matplotlib.spines import Spine
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 
